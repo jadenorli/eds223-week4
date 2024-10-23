@@ -348,6 +348,14 @@ target_rast <- rast(xmin = -113.2, xmax = -112.9,
 elevation_resample <- terra::resample(zion_elevation, y = target_rast, 
                                       method = "bilinear") #use a bilinear interpolation again 
 
+#plot the original data for the elevation
+tm_shape(zion_elevation) +
+  tm_raster()
+
+#plot the target raster 
+tm_shape(target_rast) +
+  tm_raster()
+
 #plot the resample 
 tm_shape(elevation_resample) +
   tm_raster()
