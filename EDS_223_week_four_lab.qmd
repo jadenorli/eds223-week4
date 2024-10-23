@@ -1,0 +1,356 @@
+---
+title: "EDS_223_week_four_lab"
+format: html
+editor: visual
+---
+
+# Load Libraries
+```{r}
+library(geodata)
+library(terra)
+library(tidyverse)
+library(tmap)
+library(kableExtra)
+library(spData)
+library(spDataLarge)
+
+```
+
+
+# Create Raster Objects
+```{r}
+#read in a raster object 
+##can also use the rast() function to create raster data
+zion_elevation <- rast(system.file("raster/srtm.tif", package = "spDataLarge"))
+
+#read in the land cover data too
+zion_land <- rast(system.file("raster/nlcd.tif", package = "spDataLarge"))
+
+```
+
+
+## Features
+```{r}
+#examine the class of the raster data for the elevation
+##SpatRaster is the name of the data structure that terra is using 
+class(zion_elevation)
+```
+
+
+# Make a Map
+```{r}
+#tmap can be used to make maps from vector data or raster data
+tm_shape(zion_elevation) +
+  tm_raster(title = "Elevation (meters)") 
+
+tm_shape(zion_land) +
+  tm_raster(title = "Land Cover")
+
+```
+# Summary
+```{r}
+#returns a summary of the data
+summary(zion_elevation)
+
+#prints out the summary of the data
+##this is a good way to get some basic information about the rasters 
+zion_elevation
+
+```
+
+
+# Multilayer (Multiband - Satelite Remote Imagery) Rasters
+```{r}
+#tif is one of the most common file types for storing raster data 
+##has four matrices/layers 
+landsat <- rast(system.file("raster/landsat.tif", package = "spDataLarge"))
+
+#plot the multilayer raster data
+##plots the four matrices independently from each other 
+tm_shape(landsat) +
+  tm_raster()
+
+```
+
+
+# Subset Multilayer Data
+```{r}
+#subset to layer 3 only (named landsat_3)
+landsat3 <- subset(landsat, "landsat_3")
+
+tm_shape(landsat3) +
+  tm_raster()
+
+```
+
+# Global Statistics
+```{r}
+#find the mean value of the raster
+global(zion_elevation, mean)
+
+#find how many cells are in each land cover type
+freq(zion_land)
+
+```
+
+
+# Indexing
+```{r}
+#matrices [row, column]
+##returns the value in the first row and first column
+zion_elevation[1,1]
+
+#can also use the cell id alone (cell 1)
+zion_elevation[1]
+
+#with multilayer data this returns the first cell value in all four layers
+landsat[1]
+
+#reassign values to make the first cell value 0
+zion_elevation[1,1] <- 0
+zion_elevation[1]
+
+#reassign values to make the first cell value 0 for all the layers in the multilayer raster
+landsat[1] <- 0
+landsat[1]
+
+#create a test raster to manipulate
+test_raster <- zion_elevation
+
+#if we think that values under 20 are not correct, we can replace them with NAs
+test_raster[test_raster < 20] <- NA
+
+```
+
+
+# Spatial Subsetting
+```{r}
+point <- matrix(c(-113, 37.5), ncol = 2)
+
+#extract the value in the cell at this point
+##gives us the value of the cell that contains the point
+terra::extract(zion_elevation, point)
+
+```
+
+# Clipping
+```{r}
+#create a raster that is smaller than the current raster
+clip <- rast(xmin = -113.3, xmax = -113, ymin = 37.2, ymax = 37.9,
+             resolution = 0.3,
+             vals = 1)
+
+#clip down the large raster (zion_elevation) to the size of the smaller raster (clip)
+##want to use drop = FALSE to make sure that you aren't losing the geometries; if you don't include that then it will make it a datafame instead of a raster  
+zion_elevation_clip <- zion_elevation[clip, drop = FALSE]
+
+#make a map of the original 
+tm_shape(zion_elevation) +
+  tm_raster()
+
+#make a map of the clipped raster 
+tm_shape(zion_elevation_clip) +
+  tm_raster()
+
+```
+
+
+# Masking
+```{r}
+#first create a masking raster to use for the subsetting
+rmask <- zion_elevation
+
+#rmask needs to have logicals or NAs in Boolan operators
+##replace the values less than 2000m with NAs
+rmask[rmask < 2000] <- NA
+
+#mask the data with bracket subsetting
+masked1 <- zion_elevation[rmask, drop = FALSE]
+
+#mask the data with the terra function mask
+masked2 <- terra::mask(zion_elevation, rmask)
+
+#make a map of the original 
+tm_shape(zion_elevation) +
+  tm_raster()
+
+#make a map of the masked1 raster 
+tm_shape(masked1) +
+  tm_raster()
+
+#make a map of the masked2 raster 
+tm_shape(masked2) +
+  tm_raster()
+
+```
+
+
+# Local Operations
+```{r}
+#lets reclassify some cells with local operations 
+##turning our elevation set into grouped levels of elevation (low, medium, and high)
+###group one = 1000-1500m, group two = 1500-2000m, group three = 2000-2500m, group four = 2500-3000m
+rcl <- matrix(c(1000, 1500, 1,
+                1500, 2000, 2,
+                2000, 2500, 3,
+                2500, 3000, 4),
+              ncol= 3, byrow= TRUE) 
+
+#reclassifying data into high medium and low (ordinal data)
+reclassified <- terra::classify(zion_elevation, rcl = rcl)
+
+#reclassify the values as factors as well 
+values(reclassified) <- as.factor(values(reclassified))
+
+#mapping this data
+tm_shape(reclassified) + 
+  tm_raster()
+
+```
+
+### NDVI Function
+```{r}
+#creating a function for an ndvi image, and applying to the landsat data
+##it is calculated based on two bands (the nir infared and red wavelengths)
+ndvi_fun <- function(nir, red){
+  (nir-red)/(nir+ red)
+}
+
+#subsetting to layers that are nir and redf
+##terra::lapp allows us to do cell (local) operations on multiple layers 
+##using layer 4 (nir infared) and layer 3 (red) -- the order that the function calls for the layers 
+ndvi_rast <- terra::lapp(landsat[[c(4,3)]], fun = ndvi_fun) 
+
+#make a map of the subsetted data 
+tm_shape(ndvi_rast) +
+  tm_raster()
+
+```
+
+# Focal Operations
+```{r}
+#performing a focal manipulation, kernels, smoothing out the cells based on the information in the neighbors 
+#making things more homogenous across the data 
+elevation_focal <- focal(zion_elevation, 
+                         w = matrix(1, nrow = 9, ncol = 9), # create moving window, a neighborhood of cells
+                         fun = min) # function to map new values, this is the aggregation function that it is using (finding the minimum vales in the neighborhood)
+
+#map the focal operation
+tm_shape(elevation_focal) +
+  tm_raster()
+
+```
+
+# Zonal Operations
+```{r}
+#performing a zonal manipulation
+#find the mean elevation in each of the groups (the groups in the reclassified data)
+##the second raster defines the groups that we want 
+###this does not return a raster 
+terra::zonal(zion_elevation, reclassified, fun = mean)
+
+```
+
+# Global Operations
+```{r}
+#performing a global manipulation
+##finding the mean elevation across the entire raster
+terra::global(zion_elevation, mean)
+
+```
+
+# Expanding the Extent
+```{r}
+#extending our zion elevation data using terra::extend()
+##places NAs in the smaller raster where we don't have data when we make it larger
+###create a raster that has a larger extent than the original raster
+extend <- terra::extend(zion_elevation, c(1,200))
+
+#showing that you can extend using another raster as the model
+##take the larger raster (extend) and extend the original raster to match it 
+extend2 <- terra::extend(zion_elevation, extend)
+
+#map algebra now that have the same extent 
+extend + extend2
+
+```
+
+
+
+# Checking the Origin
+```{r}
+#check the location of the origin
+##it is usually located pretty close to zero (the point in the lower left corner)
+###the origins needs to be the same as well as the extent and resolution 
+origin(zion_elevation)
+
+```
+
+# Changing the Resolution
+
+## Coarsening the Data
+```{r}
+#lowering the resolution (coarsen the data) with aggregation 
+zion_elevation_coarse <- terra::aggregate(zion_elevation,
+                                          fact = 5, #defines the number of cells to aggregate 
+                                          fun = mean) #takes the average across boxes 
+
+#plot the coarser data compared to the original data
+##original data
+tm_shape(zion_elevation) +
+  tm_raster()
+
+##coarser data
+tm_shape(zion_elevation_coarse) +
+  tm_raster()
+
+```
+
+
+## Fining the Data
+```{r}
+#increasing the resolution of the raster data with disaggregation 
+##do you get the same answer after the original data??
+zion_elevation_disagg <- terra::aggregate(zion_elevation_coarse,
+                                          fact = 5,
+                                          method = "bilinear") #an approach to estimate the values of the new cells through bilinear interporlation
+
+#conditional statement to see if the disaggregatted data matches the original data 
+##shows that they do not match fully since we lost information when we aggregated 
+if(identical(zion_elevation, zion_elevation_disagg)) {
+  print("match!")
+} else {
+  warning("don't match")
+}
+
+#plot the coarser data compared to the original data
+##original data
+tm_shape(zion_elevation) +
+  tm_raster()
+
+##finer data
+tm_shape(zion_elevation_disagg) +
+  tm_raster()
+
+```
+
+# Resampling
+```{r}
+#need to align the grid cells together with resampling 
+##create a new raster that we want to resample in to 
+###extent = (xmin, xmax, ymin, and ymax), resolution = nrow and ncol, origin = crs command 
+target_rast <- rast(xmin = -113.2, xmax = -112.9,
+                    ymin = 37.4, ymax = 37.5,
+                    nrow = 450, ncol = 460,
+                    crs = crs(zion_elevation))
+
+##resample the zion elevation into the target raster
+elevation_resample <- terra::resample(zion_elevation, y = target_rast, 
+                                      method = "bilinear") #use a bilinear interpolation again 
+
+#plot the resample 
+tm_shape(elevation_resample) +
+  tm_raster()
+
+```
+
