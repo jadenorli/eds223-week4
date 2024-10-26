@@ -29,7 +29,7 @@ zion_land <- rast(system.file("raster/nlcd.tif", package = "spDataLarge"))
 ```
 
 
-## Features
+# Features
 ```{r}
 #examine the class of the raster data for the elevation
 ##SpatRaster is the name of the data structure that terra is using 
@@ -216,7 +216,7 @@ ndvi_fun <- function(nir, red){
   (nir-red)/(nir+ red)
 }
 
-#subsetting to layers that are nir and redf
+#subsetting to layers that are nir and red
 ##terra::lapp allows us to do cell (local) operations on multiple layers 
 ##using layer 4 (nir infared) and layer 3 (red) -- the order that the function calls for the layers 
 ndvi_rast <- terra::lapp(landsat[[c(4,3)]], fun = ndvi_fun) 

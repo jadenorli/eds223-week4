@@ -1,0 +1,293 @@
+---
+title: "EDS_223_DS4"
+format: html
+editor: visual
+---
+
+# Load in Libraries
+```{r}
+#load in the necessary libraries
+library(tidyverse)
+library(spData)
+library(spDataLarge)
+library(sf)
+library(stars)
+library(terra)
+library(here)
+library(tmap)
+library(RColorBrewer)
+library(ggplot2)
+library(ggpubr)
+
+```
+
+# Create Dataframes
+```{r}
+#read in the necessary data
+dem <- terra::rast(system.file("raster/dem.tif", package = "spDataLarge"))
+landsat <- terra::rast(system.file("raster/landsat.tif", package = "spDataLarge"))
+srtm <- terra::rast(system.file("raster/srtm.tif", package = "spDataLarge"))
+peru <- stars::read_stars(here::here("DS4_data", "PER_elv.tif"))
+peru <- rast(peru)
+
+```
+
+
+
+# 1. Visualize the Dem Data
+
+## a) Create a Histogram
+```{r}
+#create a histogram of the dem data
+hist(dem)
+
+```
+
+
+## b) Create a Boxplot
+```{r}
+#create a boxplot of the dem data
+boxplot(dem)
+
+```
+
+
+
+# 2. Mean in Three Elevation Classes
+
+## a) Reclassify
+```{r}
+#reclassify the data into three groups: low (<300m), medium (300-500m), and high (>500m)
+rcl <- matrix(c(-Inf, 300, 1,
+                300, 500, 2,
+                500, Inf, 3),
+              ncol= 3, byrow= TRUE) 
+
+#reclassifying data into low (1), medium (2), and high (3)
+reclassified <- terra::classify(dem, rcl = rcl)
+
+#reclassify the values as factors as well 
+values(reclassified) <- as.factor(values(reclassified))
+
+```
+
+
+## b) Calculate Mean of Classes
+```{r}
+#calculate the mean height for each of the three classes
+terra::zonal(dem, reclassified, fun = mean)
+
+```
+
+
+
+# 3. Calculate the NDVI and NDWI
+
+## a) Normalized Difference Vegetation Index (NDVI)
+```{r}
+#create a function to calculate the NDVI
+ndvi_fun <- function(nir, red){
+  (nir - red)/(nir + red)
+}
+
+#in the landsat raster; the 4th layer is the nir layer and the 3rd layer is the red layer
+ndvi_rast <- terra::lapp(landsat[[c(4,3)]], fun = ndvi_fun) 
+
+#create a map of the NDVI 
+tm_shape(ndvi_rast) +
+  tm_raster(title = "NDVI",
+            palette = "RdYlGn",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "NDVI of Zion National Park",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+```
+
+## b) Normalized Difference Water Index (NDWI)
+```{r}
+#create a function to calculate the NDWI
+ndwi_fun <- function(green, red){
+  (green - red)/(green + red)
+}
+
+#in the landsat raster; the 2nd layer is the green layer and the 4th layer is the nir layer
+ndwi_rast <- terra::lapp(landsat[[c(2,4)]], fun = ndwi_fun) 
+
+#create a map of the NDWI 
+tm_shape(ndwi_rast) +
+  tm_raster(title = "NDWI",
+            palette = "RdYlGn",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "NDWI of Zion National Park",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+```
+
+
+## c) Correlation between NDVI and NDWI
+```{r}
+#calculate the correlation between the NDVI and the NDWI
+terra::layerCor(c(ndvi_rast, ndwi_rast), fun = cor)
+
+```
+
+
+
+# 4. Distance to Nearest Coastline
+
+## a) Create a Peru Plot
+```{r}
+#create a plot of the peru raster
+tm_shape(peru) +
+  tm_raster(title = "Elevation",
+            palette = "Spectral",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "Elevation of Peru",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+```
+
+
+
+## b) Local Distances in Peru
+```{r}
+#create a mask of the ocean so we know where the coastline is located
+##first duplicated the peru raster to create a raster we can make into the mask
+ocean_mask <- peru
+
+##since there is no elevation data for the ocean (it is just NA's in the raster) this will return TRUE for the NAs
+ocean_mask <- is.na(peru)
+
+##this will set all the FALSE values (the elevations that were above sea level) as NA
+ocean_mask[ocean_mask == 0] <- NA
+
+#create a map of the ocean_mask to ensure that the mask was created correctly 
+tm_shape(ocean_mask) +
+  tm_raster(title = "Ocean",
+            palette = "Spectral",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "Coastline of Peru",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+#calculate the distance from each cell to the coastline
+distance <- terra::distance(ocean_mask)
+
+```
+
+
+## c) Plot the Distance
+```{r}
+#create a map of the ocean_mask to ensure that the mask was created correctly 
+tm_shape(distance) +
+  tm_raster(title = "Distance (meters)",
+            palette = "-Spectral",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "Distance to the Coastline of Peru",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+```
+
+
+# 5. Change the Resolution
+
+## a) Create a Template
+```{r}
+#create a template raster that has the same origin and extent as the strm raster with a different raster
+rast_template <- terra::rast(terra::ext(srtm), res = 0.01)
+
+```
+
+
+
+## b) Change the Resolution
+```{r}
+#use the different terra resample methods to change the resolution of the srtm raster
+srtm_bilinear <- terra::resample(srtm, y = rast_template, method = "bilinear")
+srtm_near <- terra::resample(srtm, y = rast_template, method = "near")
+srtm_cubic <- terra::resample(srtm, y = rast_template, method = "cubic")
+srtm_cubicspline <- terra::resample(srtm, y = rast_template, method = "cubicspline")
+srtm_lanczos <- terra::resample(srtm, y = rast_template, method = "lanczos")
+
+```
+
+
+
+## c) Plot the Different Resolution Methods
+```{r}
+#plot the original srtm raster
+original <- tm_shape(srtm) +
+  tm_raster(title = "Elevation",
+            palette = "Spectral",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "Original Resolution",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+#plot the srtm_bilinear raster
+bilinear <- tm_shape(srtm_bilinear) +
+  tm_raster(title = "Elevation",
+            palette = "Spectral",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "Bilinear Resolution Method",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+#plot the srtm_near raster
+near <- tm_shape(srtm_near) +
+  tm_raster(title = "Elevation",
+            palette = "Spectral",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "Nearest Neighbor Resolution Method",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+#plot the srtm_cubic raster
+cubic <- tm_shape(srtm_cubic) +
+  tm_raster(title = "Elevation",
+            palette = "Spectral",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "Cubic Resolution Method",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+
+#plot the srtm_cubicspline raster
+cubicspline <- tm_shape(srtm_cubicspline) +
+  tm_raster(title = "Elevation",
+            palette = "Spectral",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "Cubic Spline Resolution Method",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+#plot the srtm_lanczos raster
+lanczos <- tm_shape(srtm_lanczos) +
+  tm_raster(title = "Elevation",
+            palette = "Spectral",     
+            style = "cont", 
+            n = 7) +                
+  tm_layout(main.title = "Lanczos Resolution Method",
+            main.title.size = 1.5,
+            legend.outside = TRUE)
+
+#combine the plots
+tmap_arrange(original, bilinear, near, cubic, cubicspline, lanczos,
+                           ncol = 3, nrow = 2)
+
+```
+
