@@ -5,6 +5,7 @@ editor: visual
 ---
 
 # Load Libraries
+
 ```{r}
 library(geodata)
 library(terra)
@@ -16,8 +17,8 @@ library(spDataLarge)
 
 ```
 
-
 # Create Raster Objects
+
 ```{r}
 #read in a raster object 
 ##can also use the rast() function to create raster data
@@ -28,16 +29,16 @@ zion_land <- rast(system.file("raster/nlcd.tif", package = "spDataLarge"))
 
 ```
 
-
 # Features
+
 ```{r}
 #examine the class of the raster data for the elevation
 ##SpatRaster is the name of the data structure that terra is using 
 class(zion_elevation)
 ```
 
-
 # Make a Map
+
 ```{r}
 #tmap can be used to make maps from vector data or raster data
 tm_shape(zion_elevation) +
@@ -47,7 +48,9 @@ tm_shape(zion_land) +
   tm_raster(title = "Land Cover")
 
 ```
+
 # Summary
+
 ```{r}
 #returns a summary of the data
 summary(zion_elevation)
@@ -58,8 +61,8 @@ zion_elevation
 
 ```
 
-
 # Multilayer (Multiband - Satelite Remote Imagery) Rasters
+
 ```{r}
 #tif is one of the most common file types for storing raster data 
 ##has four matrices/layers 
@@ -72,8 +75,8 @@ tm_shape(landsat) +
 
 ```
 
-
 # Subset Multilayer Data
+
 ```{r}
 #subset to layer 3 only (named landsat_3)
 landsat3 <- subset(landsat, "landsat_3")
@@ -84,6 +87,7 @@ tm_shape(landsat3) +
 ```
 
 # Global Statistics
+
 ```{r}
 #find the mean value of the raster
 global(zion_elevation, mean)
@@ -93,8 +97,8 @@ freq(zion_land)
 
 ```
 
-
 # Indexing
+
 ```{r}
 #matrices [row, column]
 ##returns the value in the first row and first column
@@ -122,8 +126,8 @@ test_raster[test_raster < 20] <- NA
 
 ```
 
-
 # Spatial Subsetting
+
 ```{r}
 point <- matrix(c(-113, 37.5), ncol = 2)
 
@@ -134,6 +138,7 @@ terra::extract(zion_elevation, point)
 ```
 
 # Clipping
+
 ```{r}
 #create a raster that is smaller than the current raster
 clip <- rast(xmin = -113.3, xmax = -113, ymin = 37.2, ymax = 37.9,
@@ -154,8 +159,8 @@ tm_shape(zion_elevation_clip) +
 
 ```
 
-
 # Masking
+
 ```{r}
 #first create a masking raster to use for the subsetting
 rmask <- zion_elevation
@@ -184,8 +189,8 @@ tm_shape(masked2) +
 
 ```
 
-
 # Local Operations
+
 ```{r}
 #lets reclassify some cells with local operations 
 ##turning our elevation set into grouped levels of elevation (low, medium, and high)
@@ -209,6 +214,7 @@ tm_shape(reclassified) +
 ```
 
 ### NDVI Function
+
 ```{r}
 #creating a function for an ndvi image, and applying to the landsat data
 ##it is calculated based on two bands (the nir infared and red wavelengths)
@@ -228,6 +234,7 @@ tm_shape(ndvi_rast) +
 ```
 
 # Focal Operations
+
 ```{r}
 #performing a focal manipulation, kernels, smoothing out the cells based on the information in the neighbors 
 #making things more homogenous across the data 
@@ -242,6 +249,7 @@ tm_shape(elevation_focal) +
 ```
 
 # Zonal Operations
+
 ```{r}
 #performing a zonal manipulation
 #find the mean elevation in each of the groups (the groups in the reclassified data)
@@ -252,6 +260,7 @@ terra::zonal(zion_elevation, reclassified, fun = mean)
 ```
 
 # Global Operations
+
 ```{r}
 #performing a global manipulation
 ##finding the mean elevation across the entire raster
@@ -260,6 +269,7 @@ terra::global(zion_elevation, mean)
 ```
 
 # Expanding the Extent
+
 ```{r}
 #extending our zion elevation data using terra::extend()
 ##places NAs in the smaller raster where we don't have data when we make it larger
@@ -275,9 +285,8 @@ extend + extend2
 
 ```
 
-
-
 # Checking the Origin
+
 ```{r}
 #check the location of the origin
 ##it is usually located pretty close to zero (the point in the lower left corner)
@@ -289,6 +298,7 @@ origin(zion_elevation)
 # Changing the Resolution
 
 ## Coarsening the Data
+
 ```{r}
 #lowering the resolution (coarsen the data) with aggregation 
 zion_elevation_coarse <- terra::aggregate(zion_elevation,
@@ -306,8 +316,8 @@ tm_shape(zion_elevation_coarse) +
 
 ```
 
-
 ## Fining the Data
+
 ```{r}
 #increasing the resolution of the raster data with disaggregation 
 ##do you get the same answer after the original data??
@@ -335,6 +345,7 @@ tm_shape(zion_elevation_disagg) +
 ```
 
 # Resampling
+
 ```{r}
 #need to align the grid cells together with resampling 
 ##create a new raster that we want to resample in to 
@@ -361,4 +372,3 @@ tm_shape(elevation_resample) +
   tm_raster()
 
 ```
-
